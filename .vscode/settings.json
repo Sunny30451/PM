@@ -1,0 +1,7 @@
+{
+    "git.requireGitUserConfig": false,
+    "java.project.resourceFilters": [
+        "node_modules",
+        "\\.git"
+    ]
+}
