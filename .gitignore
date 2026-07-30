@@ -1,6 +1,12 @@
 neu 1.html
 data/*.sqlite
 data/*.sqlite-*
+/dist/
+
+# Lokale Umgebungsvariablen
+.env
+.env.*
+!.env.example
 
 # Node.js dependencies and package-manager artifacts
 /node_modules/

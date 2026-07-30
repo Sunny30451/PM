@@ -11,6 +11,9 @@
     "dev:client": "vite --host --port 3300",
     "dev:server": "node server/server.js",
     "build": "vite build",
+    "container:build": "docker build --tag modulpro:local .",
+    "container:up": "docker compose -f docker-compose.yml -f docker-compose.local.yml up --build",
+    "container:down": "docker compose -f docker-compose.yml -f docker-compose.local.yml down",
     "preview": "node server/server.js",
     "start": "node server/server.js",
     "test": "node --test"

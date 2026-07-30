@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getServerConfig } from './config.js';
 import { createDatabase } from './database.js';
 
 const maximumRequestSize = 10 * 1024 * 1024;
@@ -153,6 +154,9 @@ const server = createServer(async (request, response) => {
 
     try {
         if (url.pathname === '/api/health' && request.method === 'GET') {
+            if (!database.isHealthy()) {
+                throw new Error('SQLite-Verbindung ist nicht betriebsbereit.');
+            }
             sendJson(response, 200, { status: 'ok' });
             return;
         }
@@ -198,20 +202,44 @@ const server = createServer(async (request, response) => {
     }
 });
 
-const host = process.env.API_HOST || '127.0.0.1';
-const port = Number.parseInt(process.env.API_PORT || '3001', 10);
+const { host, port } = getServerConfig();
 
 server.listen(port, host, () => {
     console.log(`ModulPro API läuft auf http://${host}:${port}`);
     console.log(`SQLite-Datenbank: ${database.path}`);
 });
 
-function shutdown() {
-    server.close(() => {
-        database.close();
-        process.exit(0);
+let isShuttingDown = false;
+
+function shutdown(signal) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    console.log(`Signal ${signal} empfangen, Server wird beendet.`);
+
+    const forceShutdown = setTimeout(() => {
+        console.error('Server konnte nicht innerhalb von 10 Sekunden beendet werden.');
+        server.closeAllConnections();
+        process.exit(1);
+    }, 10_000);
+    forceShutdown.unref();
+
+    server.close(error => {
+        clearTimeout(forceShutdown);
+
+        try {
+            database.close();
+        } catch (databaseError) {
+            console.error(databaseError);
+            process.exitCode = 1;
+        }
+
+        if (error) {
+            console.error(error);
+            process.exitCode = 1;
+        }
     });
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

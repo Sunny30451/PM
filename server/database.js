@@ -48,6 +48,7 @@ export function createDatabase(databasePath = getDefaultDatabasePath()) {
         SELECT COUNT(*) AS count
         FROM app_settings
     `);
+    const checkConnection = database.prepare('SELECT 1 AS healthy');
     const deleteProjects = database.prepare('DELETE FROM projects');
     const insertProject = database.prepare(`
         INSERT INTO projects (id, position, data, updated_at)
@@ -118,6 +119,7 @@ export function createDatabase(databasePath = getDefaultDatabasePath()) {
 
     return {
         path: resolvedPath,
+        isHealthy: () => checkConnection.get().healthy === 1,
         loadState,
         saveState,
         close: () => database.close()

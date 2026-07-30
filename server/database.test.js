@@ -26,6 +26,7 @@ test('speichert und lädt den vollständigen Anwendungszustand dauerhaft', () =>
     };
 
     const firstConnection = createDatabase(databasePath);
+    assert.equal(firstConnection.isHealthy(), true);
     firstConnection.saveState(expectedState);
     firstConnection.close();
 
