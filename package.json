@@ -3,10 +3,17 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
+    "dev:client": "vite --host --port 3300",
+    "dev:server": "node server/server.js",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "node server/server.js",
+    "start": "node server/server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "lucide-react": "^0.576.0",

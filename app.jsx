@@ -48,7 +48,12 @@ function AppShell() {
  * Handles view routing, theme application, and renders Header + active view.
  */
 function AppContent({ view, setView, activeProjectId, setActiveProjectId }) {
-  const { projects } = useAppContext();
+  const {
+    projects,
+    isLoading,
+    persistenceStatus,
+    persistenceError
+  } = useAppContext();
   const { themePref, setThemePref, isDark } = useTheme();
 
   const activeProject = useMemo(
@@ -60,12 +65,27 @@ function AppContent({ view, setView, activeProjectId, setActiveProjectId }) {
     <div className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${isDark ? 'dark bg-zinc-900 text-zinc-200' : 'bg-zinc-50 text-zinc-800'}`}>
       <Header view={view} setView={setView} themePref={themePref} setThemePref={setThemePref} />
 
+      {persistenceStatus === 'error' && (
+        <div
+          role="alert"
+          className="border-b border-amber-300 bg-amber-50 px-6 py-2 text-center text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+        >
+          Datenbank nicht erreichbar. Änderungen bleiben nur für diese Sitzung erhalten.
+          {persistenceError ? ` (${persistenceError})` : ''}
+        </div>
+      )}
+
       <main className="flex-1 overflow-auto">
-        {view === 'dashboard' && (
+        {isLoading && (
+          <div className="flex min-h-[50vh] items-center justify-center text-zinc-500 dark:text-zinc-400">
+            Daten werden aus SQLite geladen …
+          </div>
+        )}
+        {!isLoading && view === 'dashboard' && (
           <DashboardView onEdit={(id) => { setActiveProjectId(id); setView('project'); }} />
         )}
-        {view === 'admin' && <AdminView />}
-        {view === 'project' && activeProject && (
+        {!isLoading && view === 'admin' && <AdminView />}
+        {!isLoading && view === 'project' && activeProject && (
           <ProjectDetailView project={activeProject} onBack={() => setView('dashboard')} />
         )}
       </main>
