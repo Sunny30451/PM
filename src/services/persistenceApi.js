@@ -1,4 +1,5 @@
 let saveQueue = Promise.resolve();
+const stateEndpoint = `${import.meta.env.BASE_URL}api/state`;
 
 async function getErrorMessage(response) {
     try {
@@ -10,7 +11,7 @@ async function getErrorMessage(response) {
 }
 
 export async function loadAppState(signal) {
-    const response = await fetch('/api/state', {
+    const response = await fetch(stateEndpoint, {
         method: 'GET',
         headers: { Accept: 'application/json' },
         signal
@@ -23,7 +24,7 @@ export async function loadAppState(signal) {
 }
 
 async function persistAppState(state) {
-    const response = await fetch('/api/state', {
+    const response = await fetch(stateEndpoint, {
         method: 'PUT',
         headers: {
             Accept: 'application/json',

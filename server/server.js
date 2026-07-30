@@ -10,6 +10,7 @@ const maximumRequestSize = 10 * 1024 * 1024;
 const serverDirectory = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const distributionDirectory = resolve(serverDirectory, '..', 'dist');
 const database = createDatabase();
+const { host, port, basePath } = getServerConfig();
 
 const contentTypes = {
     '.css': 'text/css; charset=utf-8',
@@ -149,11 +150,39 @@ async function serveStaticFile(request, response, pathname) {
         .pipe(response);
 }
 
+function getApplicationPath(pathname) {
+    if (basePath === '/') return pathname;
+    if (pathname === basePath) return '/';
+    if (pathname.startsWith(`${basePath}/`)) {
+        return pathname.slice(basePath.length);
+    }
+    return null;
+}
+
 const server = createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
 
     try {
-        if (url.pathname === '/api/health' && request.method === 'GET') {
+        if (
+            basePath !== '/'
+            && url.pathname === basePath
+            && (request.method === 'GET' || request.method === 'HEAD')
+        ) {
+            response.writeHead(308, {
+                Location: `${basePath}/${url.search}`,
+                'Cache-Control': 'no-store'
+            });
+            response.end();
+            return;
+        }
+
+        const applicationPath = getApplicationPath(url.pathname);
+        if (applicationPath === null) {
+            sendJson(response, 404, { error: 'Anwendungspfad nicht gefunden.' });
+            return;
+        }
+
+        if (applicationPath === '/api/health' && request.method === 'GET') {
             if (!database.isHealthy()) {
                 throw new Error('SQLite-Verbindung ist nicht betriebsbereit.');
             }
@@ -161,7 +190,7 @@ const server = createServer(async (request, response) => {
             return;
         }
 
-        if (url.pathname === '/api/state' && request.method === 'GET') {
+        if (applicationPath === '/api/state' && request.method === 'GET') {
             const state = database.loadState();
             if (state === null) {
                 response.writeHead(204, { 'Cache-Control': 'no-store' });
@@ -172,20 +201,20 @@ const server = createServer(async (request, response) => {
             return;
         }
 
-        if (url.pathname === '/api/state' && request.method === 'PUT') {
+        if (applicationPath === '/api/state' && request.method === 'PUT') {
             const payload = validateState(await readJsonBody(request));
             const updatedAt = database.saveState(payload);
             sendJson(response, 200, { updatedAt });
             return;
         }
 
-        if (url.pathname.startsWith('/api/')) {
+        if (applicationPath.startsWith('/api/')) {
             sendJson(response, 404, { error: 'API-Endpunkt nicht gefunden.' });
             return;
         }
 
         if (request.method === 'GET' || request.method === 'HEAD') {
-            await serveStaticFile(request, response, url.pathname);
+            await serveStaticFile(request, response, applicationPath);
             return;
         }
 
@@ -202,10 +231,9 @@ const server = createServer(async (request, response) => {
     }
 });
 
-const { host, port } = getServerConfig();
-
 server.listen(port, host, () => {
     console.log(`ModulPro API läuft auf http://${host}:${port}`);
+    console.log(`Anwendungspfad: ${basePath}`);
     console.log(`SQLite-Datenbank: ${database.path}`);
 });
 

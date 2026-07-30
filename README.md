@@ -50,7 +50,9 @@ npm run container:up
 ```
 
 Die Anwendung ist anschließend unter `http://127.0.0.1:3000` erreichbar. Der
-Port kann in `.env` über `APP_PORT` geändert werden.
+Port kann in `.env` über `APP_PORT` geändert werden. Mit einem gesetzten
+`APP_BASE_PATH=/modulpro` lautet die lokale URL entsprechend
+`http://127.0.0.1:3000/modulpro/`.
 
 ```powershell
 npm run container:down
@@ -65,7 +67,8 @@ Named Volume. Das Volume wird nur bei einem ausdrücklich ausgeführten
 ### 1. VPS und Repository vorbereiten
 
 1. Dokploy auf dem VPS installieren.
-2. Einen DNS-A-Record der gewünschten Domain auf die öffentliche VPS-IP setzen.
+2. Prüfen, dass der vorhandene Serverhostname auf die öffentliche VPS-IP zeigt.
+   Eine zusätzlich registrierte Domain ist nicht zwingend erforderlich.
 3. Das Repository über die GitHub-App oder einen Git-Provider mit Dokploy
    verbinden.
 
@@ -85,16 +88,48 @@ Namen ist das persistente Compose-Volume gekoppelt.
 
 ### 3. Domain konfigurieren
 
-Unter **Domains** eine Domain mit diesen Zielwerten anlegen:
+Der Container selbst benötigt kein HTTPS. Traefik nimmt die öffentliche
+HTTPS-Verbindung entgegen, terminiert TLS und leitet die Anfrage intern per
+HTTP an Port `3000` des Containers weiter.
+
+Für den vorhandenen Dokploy-Hostname kann die Anwendung unter einem eigenen
+Pfad betrieben werden:
+
+`https://vmd200786.contaboserver.net/modulpro/`
+
+Vor dem Deployment unter **Environment** setzen:
+
+```dotenv
+APP_BASE_PATH=/modulpro
+```
+
+`docker-compose.yml` reicht diesen Wert sowohl als Docker-Buildargument an Vite
+als auch als Laufzeitvariable an den Node-Server weiter. Build- und
+Laufzeitwert müssen identisch sein.
+
+Anschließend unter **Domains** einen Eintrag mit diesen Zielwerten anlegen:
 
 - Service: `app`
+- Host: `vmd200786.contaboserver.net`
+- Path: `/modulpro`
+- Internal Path: leer
+- Strip Path: deaktiviert
 - Container-Port: `3000`
 - HTTPS: aktiviert
 - Zertifikat: Let's Encrypt
 
-Danach **Preview Compose** kontrollieren und neu deployen. Der Service
-veröffentlicht absichtlich keinen Host-Port; externer Zugriff erfolgt
-ausschließlich über Dokploy und Traefik.
+Der bestehende Dokploy-Zugriff bleibt damit auf `/`, während die längere
+Pfadregel `/modulpro` zur Anwendung führt. Danach **Preview Compose**
+kontrollieren und neu deployen. Änderungen an `APP_BASE_PATH` erfordern immer
+einen vollständigen Neubau des Images.
+
+Falls Dokploy auf der konkreten Installation keinen zweiten Router für
+denselben Host akzeptiert, ist eine auf die Server-IP auflösende `sslip.io`-
+Domain die robuste Alternative. Dafür `APP_BASE_PATH=/` verwenden und in
+Dokploy keinen `Path` konfigurieren.
+
+Der Service veröffentlicht absichtlich keinen Host-Port; externer Zugriff
+erfolgt ausschließlich über Dokploy und Traefik.
 
 ### 4. SQLite persistent betreiben
 
@@ -114,13 +149,15 @@ Produktivbetrieb mindestens einmal testen.
 | `NODE_ENV` | `production` | Produktionsmodus |
 | `API_HOST` | `0.0.0.0` | Erreichbarkeit im Container-Netzwerk |
 | `API_PORT` | `3000` | Interner Dokploy-Zielport |
+| `APP_BASE_PATH` | `/` oder `/modulpro` | Öffentlicher URL-Pfad; wirkt beim Build und zur Laufzeit |
 | `DATABASE_PATH` | `/app/data/modulpro.sqlite` | Datei im persistenten Volume |
 
 Diese Werte sind als Betriebsvertrag in `docker-compose.yml` festgelegt.
 
 ## Betrieb und Sicherheit
 
-- Healthcheck: `GET /api/health`; prüft Prozess und SQLite-Verbindung.
+- Healthcheck: `GET <APP_BASE_PATH>/api/health`; prüft Prozess und
+  SQLite-Verbindung.
 - SQLite ist für eine einzelne laufende Instanz vorgesehen. Keine horizontale
   Skalierung und keine parallelen schreibenden Replikate aktivieren.
 - Die Anwendung besitzt derzeit keine Benutzeranmeldung. Eine öffentliche

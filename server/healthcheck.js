@@ -1,11 +1,12 @@
 import { getServerConfig } from './config.js';
 
-const { port } = getServerConfig();
+const { port, basePath } = getServerConfig();
+const healthPath = `${basePath === '/' ? '' : basePath}/api/health`;
 const controller = new AbortController();
 const timeout = setTimeout(() => controller.abort(), 4000);
 
 try {
-    const response = await fetch(`http://127.0.0.1:${port}/api/health`, {
+    const response = await fetch(`http://127.0.0.1:${port}${healthPath}`, {
         headers: { Accept: 'application/json' },
         signal: controller.signal
     });

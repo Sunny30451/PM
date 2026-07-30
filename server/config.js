@@ -1,6 +1,26 @@
 const defaultHost = '127.0.0.1';
 const defaultPort = 3001;
 
+export function normalizeBasePath(value = '/') {
+    const normalizedValue = String(value).trim();
+    if (normalizedValue === '' || normalizedValue === '/') return '/';
+
+    const segments = normalizedValue.split('/').filter(Boolean);
+    const hasInvalidSegment = segments.some(segment => (
+        segment === '.'
+        || segment === '..'
+        || !/^[A-Za-z0-9._~-]+$/.test(segment)
+    ));
+
+    if (segments.length === 0 || hasInvalidSegment) {
+        throw new TypeError(
+            `APP_BASE_PATH muss ein sicherer URL-Pfad sein: "${value}"`
+        );
+    }
+
+    return `/${segments.join('/')}`;
+}
+
 function parsePort(value) {
     const normalizedValue = String(value).trim();
     if (!/^\d+$/.test(normalizedValue)) {
@@ -18,6 +38,7 @@ function parsePort(value) {
 export function getServerConfig(environment = process.env) {
     return {
         host: environment.API_HOST?.trim() || defaultHost,
-        port: parsePort(environment.API_PORT || defaultPort)
+        port: parsePort(environment.API_PORT || defaultPort),
+        basePath: normalizeBasePath(environment.APP_BASE_PATH)
     };
 }
