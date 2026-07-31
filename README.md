@@ -66,22 +66,37 @@ Named Volume. Das Volume wird nur bei einem ausdrücklich ausgeführten
 
 ### 1. VPS und Repository vorbereiten
 
-1. Dokploy auf dem VPS installieren.
-2. Prüfen, dass der vorhandene Serverhostname auf die öffentliche VPS-IP zeigt.
-   Eine zusätzlich registrierte Domain ist nicht zwingend erforderlich.
-3. Das Repository über die GitHub-App oder einen Git-Provider mit Dokploy
-   verbinden.
+Die produktive Instanz läuft auf dem CONTABO-VPS mit folgenden Endpunkten:
+
+- Serverhostname: `vmd200786.contaboserver.net`
+- Öffentliche IPv4: `173.212.201.249`
+- Dokploy: `https://vmd200786.contaboserver.net/`
+- ModulPro: `https://vmd200786.contaboserver.net/modulpro/`
+
+Der vorhandene CONTABO-Hostname zeigt bereits auf den VPS. Eine zusätzliche
+registrierte Domain oder `sslip.io`-Domain ist für diese Konfiguration nicht
+erforderlich.
 
 ### 2. Compose-Anwendung anlegen
 
-In Dokploy ein Projekt und darin einen Service vom Typ **Docker Compose**
-anlegen:
+Im Dokploy-Projekt wird ein Service vom Typ **Docker Compose** mit der
+GitHub-Quelle konfiguriert:
 
-- Compose-Typ: Standard Docker Compose, nicht Docker Stack
-- Produktionsbranch: der gewünschte Release-Branch
+- Provider: GitHub
+- GitHub Account: `vmd200786-Dokploy-2026-07-11`
+- Repository: `PM`
+- Branch: `docker`
 - Compose-Pfad: `./docker-compose.yml`
+- Trigger Type: `On Push`
+- Watch Paths: leer
+- Submodules: deaktiviert
+- Compose-Typ: Standard Docker Compose, nicht Docker Stack
 - Isolated Deployment: aktiviert
 - Replikate: genau `1`
+
+Jeder Push auf den Branch `docker` löst damit ein Deployment aus. Änderungen
+an Domain oder Environment müssen zusätzlich gespeichert und durch ein
+Redeployment des Compose-Service aktiviert werden.
 
 `COMPOSE_PROJECT_NAME` und den Dokploy-`appName` nicht manuell ändern. An diesen
 Namen ist das persistente Compose-Volume gekoppelt.
@@ -97,7 +112,7 @@ Pfad betrieben werden:
 
 `https://vmd200786.contaboserver.net/modulpro/`
 
-Vor dem Deployment unter **Environment** setzen:
+Unter **Environment** ist exakt folgende Variable gesetzt:
 
 ```dotenv
 APP_BASE_PATH=/modulpro
@@ -107,26 +122,47 @@ APP_BASE_PATH=/modulpro
 als auch als Laufzeitvariable an den Node-Server weiter. Build- und
 Laufzeitwert müssen identisch sein.
 
-Anschließend unter **Domains** einen Eintrag mit diesen Zielwerten anlegen:
+Der funktionierende Domain-Eintrag verwendet exakt diese Werte:
 
 - Service: `app`
 - Host: `vmd200786.contaboserver.net`
 - Path: `/modulpro`
-- Internal Path: leer
-- Strip Path: deaktiviert
+- Internal Path: `/modulpro`
+- Strip Path: aktiviert
 - Container-Port: `3000`
+- Custom Entrypoint: deaktiviert
 - HTTPS: aktiviert
 - Zertifikat: Let's Encrypt
+- Middlewares: keine
 
-Der bestehende Dokploy-Zugriff bleibt damit auf `/`, während die längere
-Pfadregel `/modulpro` zur Anwendung führt. Danach **Preview Compose**
-kontrollieren und neu deployen. Änderungen an `APP_BASE_PATH` erfordern immer
-einen vollständigen Neubau des Images.
+`Strip Path` und `Internal Path` bilden hier eine zusammengehörige
+Transformation. Traefik entfernt zunächst den öffentlichen Präfix
+`/modulpro` und fügt anschließend den internen Präfix `/modulpro` wieder hinzu.
+Dadurch erhält der Container alle Frontend-, Asset- und API-Anfragen unter dem
+Pfad, den `APP_BASE_PATH` vorgibt. Diese drei Einstellungen nicht unabhängig
+voneinander ändern.
 
-Falls Dokploy auf der konkreten Installation keinen zweiten Router für
-denselben Host akzeptiert, ist eine auf die Server-IP auflösende `sslip.io`-
-Domain die robuste Alternative. Dafür `APP_BASE_PATH=/` verwenden und in
-Dokploy keinen `Path` konfigurieren.
+Der bestehende Dokploy-Zugriff bleibt auf `/`, während `/modulpro` zur
+Anwendung führt. Änderungen an Domain oder `APP_BASE_PATH` erfordern ein
+Redeployment mit neuem Image-Build; ein einfacher Container-Restart genügt
+nicht.
+
+Kontrollaufruf nach dem Deployment:
+
+```powershell
+curl.exe -i https://vmd200786.contaboserver.net/modulpro/api/health
+```
+
+Erwartet werden `HTTP/1.1 200`, `Content-Type: application/json` und:
+
+```json
+{"status":"ok"}
+```
+
+Wenn stattdessen eine HTML-Seite mit dem Titel `Dokploy` zurückkommt, verarbeitet
+weiterhin der Panel-Router die Anfrage. Dann Domain-Pfad, Service, Port und
+Redeployment prüfen. Ein JavaScript-Asset mit `Content-Type: text/html` ist
+dieselbe Fehlkonfiguration und kein Browser- oder MIME-Problem.
 
 Der Service veröffentlicht absichtlich keinen Host-Port; externer Zugriff
 erfolgt ausschließlich über Dokploy und Traefik.
@@ -144,15 +180,30 @@ Produktivbetrieb mindestens einmal testen.
 
 ## Laufzeitkonfiguration
 
-| Variable | Containerwert | Zweck |
+| Variable | Produktivwert | Zweck |
 |---|---:|---|
 | `NODE_ENV` | `production` | Produktionsmodus |
 | `API_HOST` | `0.0.0.0` | Erreichbarkeit im Container-Netzwerk |
 | `API_PORT` | `3000` | Interner Dokploy-Zielport |
-| `APP_BASE_PATH` | `/` oder `/modulpro` | Öffentlicher URL-Pfad; wirkt beim Build und zur Laufzeit |
+| `APP_BASE_PATH` | `/modulpro` | Öffentlicher URL-Pfad; wirkt beim Build und zur Laufzeit |
 | `DATABASE_PATH` | `/app/data/modulpro.sqlite` | Datei im persistenten Volume |
 
-Diese Werte sind als Betriebsvertrag in `docker-compose.yml` festgelegt.
+`docker-compose.yml` verwendet aktuell zusätzlich folgende
+Betriebseinstellungen:
+
+| Bereich | Einstellung |
+|---|---|
+| Build | Multi-Stage-`Dockerfile`, Target `runtime` |
+| Netzwerk | Nur `expose: 3000`; keine öffentliche Host-Portbindung |
+| Lokaler Port | Ausschließlich über `docker-compose.local.yml`: `127.0.0.1:3000` |
+| Persistenz | Named Volume `app_data` auf `/app/data` |
+| Root-Dateisystem | `read_only: true` |
+| Temporärer Speicher | `/tmp` als 16-MB-`tmpfs` |
+| Prozessrechte | Benutzer `node`, alle Linux-Capabilities entfernt |
+| Privilegien | `no-new-privileges:true` |
+| Neustart | `unless-stopped` |
+| Shutdown | `SIGTERM`, Grace Period 15 Sekunden |
+| Healthcheck | alle 30 Sekunden, 5 Sekunden Timeout, 3 Versuche |
 
 ## Betrieb und Sicherheit
 
